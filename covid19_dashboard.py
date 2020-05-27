@@ -76,6 +76,8 @@ rus_new_deaths = get_metric_ser(DEATHS_CSV, 'new', 'Russia')
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
+server = app.server
+
 colors = {
     'background': '#FFFFFF',
     'text': '#8C9D95'
@@ -88,14 +90,14 @@ def serve_layout():
             html.H1('COVID-19 Dashboard'),
             html.Div(
                 [
-                    html.Button('Cumulative', id='cum_button', n_clicks_timestamp=1),
-                    html.Button('New Cases', id='new_cases_button', n_clicks_timestamp=0)
+                    html.Button('Cumulative', id='cum_button', n_clicks_timestamp=1, className='btn active'),
+                    html.Button('New Cases', id='new_cases_button', n_clicks_timestamp=0, className='btn')
                 ],
                 style={'textAlign': 'center'}
             ),
             html.Div(
                 id='button-clicked',
-                style={'textAlign': 'center'}
+                style={'textAlign': 'center', 'marginBottom': 10}
             ),
             dcc.Tabs(id="tabs", value='rus_tab', children=[
                 dcc.Tab(label='Russia', value='rus_tab'),
@@ -104,6 +106,19 @@ def serve_layout():
             html.Div(id='tabs-content'),
         ]
     )
+
+
+@app.callback(
+    [Output('cum_button', 'className'),
+     Output('new_cases_button', 'className')],
+    [Input('cum_button', 'n_clicks_timestamp'),
+     Input('new_cases_button', 'n_clicks_timestamp')]
+)
+def set_active_button(btn1, btn2):
+    if int(btn1) > int(btn2):
+        return ('btn active', 'btn')
+    else:
+        return ('btn', 'btn active')
 
 
 def generate_plot(x, y, type, title, color):
@@ -138,14 +153,26 @@ def render_rus_cumulative_content():
     fig.add_trace(go.Indicator(
         mode="number+delta",
         value=rus_confirmed_cum.values[-1],
-        number={"valueformat": "9,999,999"},
-        domain={'x': [0, 0.33], 'y': [0, 0.5]},
-        title={'text': 'Confirmed'},
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'size': 60,
+                'color': 'blue'
+            }
+        },
+        domain={'row': 0, 'column': 0},
+        # domain={'x': [0, 0.4], 'y': [0, 1]},
+        title={
+            'text': 'Confirmed',
+            'font': {
+                'size': 24,
+            }
+        },
         delta={
             'reference': rus_confirmed_cum.values[-2],
             'relative': False,
             'position': "bottom",
-            'valueformat': "#,###",
+            'valueformat': ">,d",
             'increasing.color': 'blue',
             'increasing.symbol': '+',
         }))
@@ -153,39 +180,68 @@ def render_rus_cumulative_content():
     fig.add_trace(go.Indicator(
         mode="number+delta",
         value=rus_recovered_cum.values[-1],
-        number={"valueformat": "9,999,999"},
-        domain={'x': [0.33, 0.66], 'y': [0, 0.5]},
-        title={'text': 'Recovered'},
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'size': 60,
+                'color': 'green'
+            }
+        },
+        domain={'row': 0, 'column': 1},
+        # domain={'x': [0.4, 0.8], 'y': [0, 1]},
+        title={
+            'text': 'Recovered',
+            'font': {
+                'size': 24,
+            }
+        },
         delta={
             'reference': rus_recovered_cum.values[-2],
             'relative': False,
             'position': "bottom",
-            'valueformat': "#,###",
+            'valueformat': ">,d",
             'increasing.color': 'green',
             'increasing.symbol': '+'
         }))
 
     fig.add_trace(go.Indicator(
         mode="number+delta",
+        align='center',
         value=rus_deaths_cum.values[-1],
-        number={"valueformat": "9,999,999"},
-        domain={'x': [0.66, 1], 'y': [0, 0.5]},
-        title={'text': 'Deaths'},
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'size': 60,
+                'color': 'red',
+            }
+        },
+        domain={'row': 0, 'column': 2},
+        # domain={'x': [0.8, 1], 'y': [0, 1]},
+        title={
+            'text': 'Deaths',
+            'font': {
+                'size': 24,
+            }
+        },
         delta={
             'reference': rus_deaths_cum.values[-2],
             'relative': False,
             'position': "bottom",
-            'valueformat': "#,###",
+            'valueformat': ">,d",
             'increasing.color': 'red',
-            'increasing.symbol': '+'
+            'increasing.symbol': '+',
+            # 'font.size': 48
         }))
 
+    fig.update_layout(
+        grid={'rows': 1, 'columns': 3},
+        autosize=True,
+        # width=500,
+        height=300
+    )
+
     return html.Div(children=[
-        html.Div(
-            [
-                dcc.Graph(figure=fig),
-            ]
-        ),
+        dcc.Graph(figure=fig),
         html.H2(
             children='Confirmed Cases',
             style={
@@ -235,7 +291,81 @@ def render_rus_new_content():
     """
         Render Russian new stats
     """
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Indicator(
+        mode="number",
+        align='center',
+        value=rus_new_cases.values[-1],
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'blue',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 0},
+        title={
+            'text': 'New Cases',
+            'font': {
+                'color': 'blue',
+                'size': 24,
+            }
+        },
+    ))
+
+    fig.add_trace(go.Indicator(
+        mode="number",
+        align='center',
+        value=rus_new_recovered.values[-1],
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'green',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 1},
+        title={
+            'text': 'New Recovered',
+            'font': {
+                'color': 'green',
+                'size': 24,
+            }
+        },
+    ))
+
+    fig.add_trace(go.Indicator(
+        mode="number",
+        align='center',
+        value=rus_new_deaths.values[-1],
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'red',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 2},
+        title={
+            'text': 'New Deaths',
+            'font': {
+                'color': 'red',
+                'size': 24,
+            }
+        },
+    ))
+
+    fig.update_layout(
+        grid={'rows': 1, 'columns': 3},
+        autosize=True,
+        # width=500,
+        height=250
+    )
+
     return html.Div(children=[
+        dcc.Graph(figure=fig),
         html.H2(
             children='New Cases',
             style={
@@ -290,55 +420,97 @@ def render_global_cumulative_content():
 
     fig.add_trace(go.Indicator(
         mode="number+delta",
+        align='center',
         value=global_confirmed_cum.values[-1],
-        number={"valueformat": "9,999,999"},
-        domain={'x': [0, 0.33], 'y': [0, 0.5]},
-        title={'text': 'Confirmed'},
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'blue',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 0},
+        title={
+            'text': 'Confirmed',
+            'font': {
+                'color': 'blue',
+                'size': 24,
+            }
+        },
         delta={
             'reference': global_confirmed_cum.values[-2],
             'relative': False,
             'position': "bottom",
-            'valueformat': "#,###",
+            'valueformat': ">,d",
             'increasing.color': 'blue',
             'increasing.symbol': '+',
         }))
 
     fig.add_trace(go.Indicator(
         mode="number+delta",
+        align='center',
         value=global_recovered_cum.values[-1],
-        number={"valueformat": "9,999,999"},
-        domain={'x': [0.33, 0.66], 'y': [0, 0.5]},
-        title={'text': 'Recovered'},
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'green',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 1},
+        title={
+            'text': 'Recovered',
+            'font': {
+                'color': 'green',
+                'size': 24,
+            }
+        },
         delta={
             'reference': global_recovered_cum.values[-2],
             'relative': False,
             'position': "bottom",
-            'valueformat': "#,###",
+            'valueformat': ">,d",
             'increasing.color': 'green',
             'increasing.symbol': '+'
         }))
 
     fig.add_trace(go.Indicator(
         mode="number+delta",
+        align='center',
         value=global_deaths_cum.values[-1],
-        number={"valueformat": "9,999,999"},
-        domain={'x': [0.66, 1], 'y': [0, 0.5]},
-        title={'text': 'Deaths'},
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'red',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 2},
+        title={
+            'text': 'Deaths',
+            'font': {
+                'color': 'red',
+                'size': 24,
+            }
+        },
         delta={
             'reference': global_deaths_cum.values[-2],
             'relative': False,
             'position': "bottom",
-            'valueformat': "#,###",
+            'valueformat': ">,d",
             'increasing.color': 'red',
             'increasing.symbol': '+'
         }))
 
+    fig.update_layout(
+        grid={'rows': 1, 'columns': 3},
+        autosize=True,
+        # width=500,
+        height=300
+    )
+
     return html.Div(children=[
-        html.Div(
-            [
-                dcc.Graph(figure=fig),
-            ]
-        ),
+        dcc.Graph(figure=fig),
         html.H2(
             children='Confirmed Cases',
             style={
@@ -388,7 +560,81 @@ def render_global_new_content():
     """
         Render worldwide new cases stats
     """
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Indicator(
+        mode="number",
+        align='center',
+        value=global_confirmed_new.values[-1],
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'blue',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 0},
+        title={
+            'text': 'New Cases',
+            'font': {
+                'color': 'blue',
+                'size': 24,
+            }
+        },
+    ))
+
+    fig.add_trace(go.Indicator(
+        mode="number",
+        align='center',
+        value=global_new_recovered.values[-1],
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'green',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 1},
+        title={
+            'text': 'New Recovered',
+            'font': {
+                'color': 'green',
+                'size': 24,
+            }
+        },
+    ))
+
+    fig.add_trace(go.Indicator(
+        mode="number",
+        align='center',
+        value=global_new_deaths.values[-1],
+        number={
+            "valueformat": ">,d",
+            'font': {
+                'color': 'red',
+                'size': 60,
+            }
+        },
+        domain={'row': 0, 'column': 2},
+        title={
+            'text': 'New Deaths',
+            'font': {
+                'color': 'red',
+                'size': 24,
+            }
+        },
+    ))
+
+    fig.update_layout(
+        grid={'rows': 1, 'columns': 3},
+        autosize=True,
+        # width=500,
+        height=250
+    )
+
     return html.Div(children=[
+        dcc.Graph(figure=fig),
         html.H2(
             children='New Cases',
             style={
@@ -437,18 +683,18 @@ def render_global_new_content():
 app.layout = serve_layout
 
 
-@app.callback(
-    Output('button-clicked', 'children'),
-    [
-        Input('cum_button', 'n_clicks_timestamp'),
-        Input('new_cases_button', 'n_clicks_timestamp')
-    ]
-)
-def display(btn1, btn2):
-    if int(btn1) > int(btn2):
-        return html.Div('Button "Cumulative Cases" was clicked!')
-    else:
-        return html.Div('Button "New cases" was clicked!')
+# @app.callback(
+#     Output('button-clicked', 'children'),
+#     [
+#         Input('cum_button', 'n_clicks_timestamp'),
+#         Input('new_cases_button', 'n_clicks_timestamp')
+#     ]
+# )
+# def display(btn1, btn2):
+#     if int(btn1) > int(btn2):
+#         return html.Div('Button "Cumulative Cases" was clicked!')
+#     else:
+#         return html.Div('Button "New cases" was clicked!')
 
 
 @app.callback(
@@ -475,4 +721,4 @@ def render_content(tab, btn1, btn2):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True, host='0.0.0.0', port='8050')
+    app.run_server(debug=True)
