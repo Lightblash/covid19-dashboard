@@ -90,8 +90,16 @@ def serve_layout():
             html.H1('COVID-19 Dashboard'),
             html.Div(
                 [
-                    html.Button('Cumulative', id='cum_button', n_clicks_timestamp=1, className='btn active'),
-                    html.Button('New Cases', id='new_cases_button', n_clicks_timestamp=0, className='btn')
+                    html.Button(
+                        'Cumulative', id='cum_button', n_clicks_timestamp=1,
+                        className='btn active',
+                        style={'backgroundColor': '#e7e7e7', 'color': 'black'}
+                    ),
+                    html.Button(
+                        'New Cases', id='new_cases_button', n_clicks_timestamp=0,
+                        className='btn',
+                        style={'backgroundColor': '#e7e7e7', 'color': 'black'}
+                    )
                 ],
                 style={'textAlign': 'center'}
             ),
@@ -108,17 +116,32 @@ def serve_layout():
     )
 
 
+# @app.callback(
+#     [Output('cum_button', 'className'),
+#      Output('new_cases_button', 'className')],
+#     [Input('cum_button', 'n_clicks_timestamp'),
+#      Input('new_cases_button', 'n_clicks_timestamp')]
+# )
+# def set_active_button(btn1, btn2):
+#     if int(btn1) > int(btn2):
+#         return ('btn active', 'btn')
+#     else:
+#         return ('btn', 'btn active')
+
+
 @app.callback(
-    [Output('cum_button', 'className'),
-     Output('new_cases_button', 'className')],
+    [Output('cum_button', 'style'),
+     Output('new_cases_button', 'style')],
     [Input('cum_button', 'n_clicks_timestamp'),
      Input('new_cases_button', 'n_clicks_timestamp')]
 )
-def set_active_button(btn1, btn2):
+def set_active_button_color(btn1, btn2):
+    active = {'backgroundColor': '#008CBA', 'color': 'white'}
+    passive = {'backgroundColor': '#e7e7e7', 'color': 'black'}
     if int(btn1) > int(btn2):
-        return ('btn active', 'btn')
+        return (active, passive)
     else:
-        return ('btn', 'btn active')
+        return (passive, active)
 
 
 def generate_plot(x, y, type, title, color):
@@ -136,9 +159,15 @@ def generate_plot(x, y, type, title, color):
             'layout': {
                 'plot_bgcolor': colors['background'],
                 'paper_bgcolor': colors['background'],
-                'font': {'color': 'green'},
-                'color': 'green',
-                'title': title
+                'font': {'color': color},
+                'color': color,
+                'title': {
+                    'text': title,
+                    'font': {
+                        'color': color,
+                        'size': 24,
+                    }
+                }
             }
         }
     )
@@ -157,7 +186,7 @@ def render_rus_cumulative_content():
             "valueformat": ">,d",
             'font': {
                 'size': 60,
-                'color': 'blue'
+                'color': 'blue',
             }
         },
         domain={'row': 0, 'column': 0},
@@ -166,6 +195,7 @@ def render_rus_cumulative_content():
             'text': 'Confirmed',
             'font': {
                 'size': 24,
+                'color': 'blue',
             }
         },
         delta={
@@ -184,7 +214,7 @@ def render_rus_cumulative_content():
             "valueformat": ">,d",
             'font': {
                 'size': 60,
-                'color': 'green'
+                'color': 'green',
             }
         },
         domain={'row': 0, 'column': 1},
@@ -193,6 +223,7 @@ def render_rus_cumulative_content():
             'text': 'Recovered',
             'font': {
                 'size': 24,
+                'color': 'green',
             }
         },
         delta={
@@ -221,6 +252,7 @@ def render_rus_cumulative_content():
             'text': 'Deaths',
             'font': {
                 'size': 24,
+                'color': 'red',
             }
         },
         delta={
@@ -242,13 +274,6 @@ def render_rus_cumulative_content():
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
-        html.H2(
-            children='Confirmed Cases',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
-        ),
         generate_plot(
             x=rus_confirmed_cum.index,
             y=rus_confirmed_cum.values,
@@ -256,26 +281,12 @@ def render_rus_cumulative_content():
             title='Confirmed Cases',
             color='blue'
         ),
-        html.H2(
-            children='Recovered',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
-        ),
         generate_plot(
             x=rus_recovered_cum.index,
             y=rus_recovered_cum.values,
             type='bar',
             title='Recovered',
             color='green'
-        ),
-        html.H2(
-            children='Deaths',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
         ),
         generate_plot(
             x=rus_deaths_cum.index,
@@ -366,13 +377,6 @@ def render_rus_new_content():
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
-        html.H2(
-            children='New Cases',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
-        ),
         generate_plot(
             x=rus_new_cases.index,
             y=rus_new_cases.values,
@@ -380,26 +384,12 @@ def render_rus_new_content():
             title='New Cases',
             color='blue'
         ),
-        html.H2(
-            children='New Recovered',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
-        ),
         generate_plot(
             x=rus_new_recovered.index,
             y=rus_new_recovered.values,
             type='bar',
             title='New Recovered',
             color='green'
-        ),
-        html.H2(
-            children='New Deaths',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
         ),
         generate_plot(
             x=rus_new_deaths.index,
@@ -511,13 +501,6 @@ def render_global_cumulative_content():
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
-        html.H2(
-            children='Confirmed Cases',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
-        ),
         generate_plot(
             x=global_confirmed_cum.index,
             y=global_confirmed_cum.values,
@@ -525,26 +508,12 @@ def render_global_cumulative_content():
             title='Confirmed Cases',
             color='blue'
         ),
-        html.H2(
-            children='Recovered',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
-        ),
         generate_plot(
             x=global_recovered_cum.index,
             y=global_recovered_cum.values,
             type='bar',
             title='Recovered',
             color='green'
-        ),
-        html.H2(
-            children='Deaths',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
         ),
         generate_plot(
             x=global_deaths_cum.index,
@@ -635,13 +604,6 @@ def render_global_new_content():
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
-        html.H2(
-            children='New Cases',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
-        ),
         generate_plot(
             x=global_confirmed_new.index,
             y=global_confirmed_new.values,
@@ -649,26 +611,12 @@ def render_global_new_content():
             title='New Cases',
             color='blue'
         ),
-        html.H2(
-            children='New Recovered',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
-        ),
         generate_plot(
             x=global_new_recovered.index,
             y=global_new_recovered.values,
             type='bar',
             title='New Recovered',
             color='green'
-        ),
-        html.H2(
-            children='New Deaths',
-            style={
-                'textAlign': 'right',
-                'color': colors['text']
-            }
         ),
         generate_plot(
             x=global_new_deaths.index,
@@ -681,20 +629,6 @@ def render_global_new_content():
 
 
 app.layout = serve_layout
-
-
-# @app.callback(
-#     Output('button-clicked', 'children'),
-#     [
-#         Input('cum_button', 'n_clicks_timestamp'),
-#         Input('new_cases_button', 'n_clicks_timestamp')
-#     ]
-# )
-# def display(btn1, btn2):
-#     if int(btn1) > int(btn2):
-#         return html.Div('Button "Cumulative Cases" was clicked!')
-#     else:
-#         return html.Div('Button "New cases" was clicked!')
 
 
 @app.callback(
