@@ -1,18 +1,29 @@
 # COVID-19 Dashboard
 
-Simple dashboard with COVID-19 statistics on Dash
+Simple dashboard with COVID-19 global and separate Russian Federation statistics on Dash
+
+![gif here](assets/pres.gif)
 
 ## Installation
 
-- All the `code` required to get started
-- Images of what it should look like
+Clone this repository to your local machine running one of the following commands
 
-### Clone
+via SSH
 
-Clone this repo to your local machine using `git clone `
+    git clone git@github.com:Lightblash/covid19-dashboard.git
 
-### Setup
+via HTTPS
 
-```shell
-$ pip install -r requirements.txt
-```
+    git clone https://github.com/Lightblash/covid19-dashboard.git
+
+Install all dependencies into your current environment running the following command from the root of repo
+
+    pip install -r requirements.txt
+
+## How to use
+
+Run the app from the root directory of the repo with
+
+    python covid19_dashboard.py
+
+and visit http://127.0.0.1:8050/ in your web browser. You should see the app.
