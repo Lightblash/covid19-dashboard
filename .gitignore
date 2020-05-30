@@ -1,2 +1,5 @@
 env/
 .vscode/
+app.py
+.dockerignore
+Dockerfile
