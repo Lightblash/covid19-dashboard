@@ -5,6 +5,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 import pandas as pd
 import plotly.graph_objs as go
+import plotly.express as px
 
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -22,7 +23,7 @@ def get_metric_ser(metric_csv, metric_type, country=None):
         Parameter
         ---------
 
-        metrics_csv : url
+        metrics_csv : str
             Full url path to target csv file
 
         metric_type : str
@@ -74,6 +75,12 @@ global_new_deaths = get_metric_ser(DEATHS_CSV, 'new')
 rus_deaths_cum = get_metric_ser(DEATHS_CSV, 'cumulative', 'Russia')
 rus_new_deaths = get_metric_ser(DEATHS_CSV, 'new', 'Russia')
 
+# active
+global_active_cum = global_confirmed_cum - global_recovered_cum
+global_active_new = global_confirmed_new - global_new_recovered
+rus_active_cum = rus_confirmed_cum - rus_recovered_cum
+rus_active_new = rus_new_cases - rus_new_recovered
+
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 server = app.server
@@ -85,9 +92,13 @@ colors = {
 
 
 def serve_layout():
+    """
+
+    """
     return html.Div(
         [
             html.H1('COVID-19 Dashboard'),
+            # section with buttons
             html.Div(
                 [
                     html.Button(
@@ -107,6 +118,7 @@ def serve_layout():
                 id='button-clicked',
                 style={'textAlign': 'center', 'marginBottom': 10}
             ),
+            # section with tabs
             dcc.Tabs(id="tabs", value='rus_tab', children=[
                 dcc.Tab(label='Russia', value='rus_tab'),
                 dcc.Tab(label='World', value='global_tab'),
@@ -116,19 +128,7 @@ def serve_layout():
     )
 
 
-# @app.callback(
-#     [Output('cum_button', 'className'),
-#      Output('new_cases_button', 'className')],
-#     [Input('cum_button', 'n_clicks_timestamp'),
-#      Input('new_cases_button', 'n_clicks_timestamp')]
-# )
-# def set_active_button(btn1, btn2):
-#     if int(btn1) > int(btn2):
-#         return ('btn active', 'btn')
-#     else:
-#         return ('btn', 'btn active')
-
-
+# determine which button is pressed
 @app.callback(
     [Output('cum_button', 'style'),
      Output('new_cases_button', 'style')],
@@ -145,6 +145,9 @@ def set_active_button_color(btn1, btn2):
 
 
 def generate_plot(x, y, type, title, color):
+    """
+        Generate dash core components graph object
+    """
     return dcc.Graph(
         # id='articles_id',
         figure={
@@ -152,8 +155,9 @@ def generate_plot(x, y, type, title, color):
                 {
                     'x': x,
                     'y': y,
-                    'type': type, 'name': title,
-                    'marker': {'color': color}
+                    'type': type,
+                    'name': title,
+                    'marker': {'color': color},
                 }
             ],
             'layout': {
@@ -167,21 +171,159 @@ def generate_plot(x, y, type, title, color):
                         'color': color,
                         'size': 24,
                     }
-                }
+                },
+                'xaxis': {
+                    'range': ['2020-03-01', (x.max() + pd.DateOffset(days=1)).strftime('%Y-%m-%d')]
+                },
+                # 'autosize': False,
+                # 'width': 600,
+                # 'height': 500,
             }
         }
     )
 
 
-def render_rus_cumulative_content():
+def get_processed_df(metric_csv):
     """
-        Render Russian cumulative stats
+
+        Parameter
+        ---------
+
+        metrics_csv : str
+            Full url path to target csv file
     """
+
+    df = pd.read_csv(metric_csv)
+    df.drop(columns=['Province/State'], inplace=True)
+    df = df.melt(
+        id_vars=['Country/Region', 'Lat', 'Long'],
+        var_name='date',
+        value_name='value'
+    )
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.groupby(['Country/Region', 'date', 'Lat', 'Long']).value.sum().reset_index()
+    df['prev_value'] = df.groupby('Country/Region').value.shift(1)
+    df['new_cases'] = df.value - df.prev_value
+    df.drop(columns=['prev_value'], inplace=True)
+
+    return df
+
+
+def render_map_chart():
+    """
+
+    """
+
+    confirmed_df = get_processed_df(CONFIRMED_CSV)
+
+    confirmed_df['date'] = confirmed_df.date.astype(str)
+
+    norm = confirmed_df.groupby('date').value.max().reset_index()
+
+    confirmed_df = confirmed_df.merge(norm, on='date', how='left')
+
+    confirmed_df['Norm'] = confirmed_df.value_x / confirmed_df.value_y
+
+    confirmed_df['Norm'].fillna(0, inplace=True)
+    # call scatter_mapbox function from px. Note the attributes especially
+    # normalisation of data and maximum maker size. The animation is done on Dates.
+    fig_map = px.scatter_mapbox(
+        confirmed_df, lat="Lat", lon="Long", color='value_x',
+        size=confirmed_df['Norm'].round(3) ** 0.5 * 50,
+        color_continuous_scale="thermal", size_max=50, animation_frame='date',
+        center=dict({'lat': 32, 'lon': 4}), zoom=1, hover_data=['Country/Region']
+    )
+    # here on wards various layouts have been called in to bring it in the present shape
+    fig_map.update_layout(
+
+        mapbox_style="carto-positron",
+        width=1250,
+        height=630,
+        margin={"r": 0, "t": 0, "l": 10, "b": 0}
+    )
+    # update frame speed
+    fig_map.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 200
+    # update different layouts
+    fig_map.layout.sliders[0].currentvalue.xanchor = "left"
+    fig_map.layout.sliders[0].currentvalue.offset = -100
+    fig_map.layout.sliders[0].currentvalue.prefix = ""
+    fig_map.layout.sliders[0].len = .9
+    fig_map.layout.sliders[0].currentvalue.font.color = "indianred"
+    fig_map.layout.sliders[0].currentvalue.font.size = 20
+    fig_map.layout.sliders[0].y = 1.1
+    fig_map.layout.sliders[0].x = 0.15
+    fig_map.layout.updatemenus[0].y = 1.27
+
+    return fig_map
+
+
+map_fig = render_map_chart()
+
+
+def get_key_metrics_fig(confirmed_ser, recovered_ser, deaths_ser, metric_type):
+    """
+        Return key metrics graph object figure
+
+        Parameters
+
+        ----------
+
+        confirmed_ser: pandas.Series
+            Confirmed pandas series objects with index=dates,
+            values=number of cases
+
+        recovered_ser: pandas.Series
+            Recovered pandas series objects with index=dates,
+            values=number of cases
+
+        deaths_ser: pandas.Series
+            Deaths pandas series objects with index=dates,
+            values=number of cases
+
+        metric_type: str
+            One of ['cumulative', 'new]
+    """
+
     fig = go.Figure()
 
+    if metric_type == 'cumulative':
+        mode = 'number+delta'
+        delta_confirmed = {
+            'reference': confirmed_ser.values[-2],
+            'relative': False,
+            'position': "bottom",
+            'valueformat': ">,d",
+            'increasing.color': 'blue',
+            'increasing.symbol': '+'
+        }
+
+        delta_recovered = {
+            'reference': recovered_ser.values[-2],
+            'relative': False,
+            'position': "bottom",
+            'valueformat': ">,d",
+            'increasing.color': 'green',
+            'increasing.symbol': '+'
+        }
+
+        delta_deaths = {
+            'reference': deaths_ser.values[-2],
+            'relative': False,
+            'position': "bottom",
+            'valueformat': ">,d",
+            'increasing.color': 'red',
+            'increasing.symbol': '+'
+        }
+
+    elif metric_type == 'new':
+        mode = 'number'
+        delta_confirmed = None
+        delta_recovered = None
+        delta_deaths = None
+
     fig.add_trace(go.Indicator(
-        mode="number+delta",
-        value=rus_confirmed_cum.values[-1],
+        mode=mode,
+        value=confirmed_ser.values[-1],
         number={
             "valueformat": ">,d",
             'font': {
@@ -190,7 +332,6 @@ def render_rus_cumulative_content():
             }
         },
         domain={'row': 0, 'column': 0},
-        # domain={'x': [0, 0.4], 'y': [0, 1]},
         title={
             'text': 'Confirmed',
             'font': {
@@ -198,18 +339,11 @@ def render_rus_cumulative_content():
                 'color': 'blue',
             }
         },
-        delta={
-            'reference': rus_confirmed_cum.values[-2],
-            'relative': False,
-            'position': "bottom",
-            'valueformat': ">,d",
-            'increasing.color': 'blue',
-            'increasing.symbol': '+',
-        }))
+        delta=delta_confirmed))
 
     fig.add_trace(go.Indicator(
-        mode="number+delta",
-        value=rus_recovered_cum.values[-1],
+        mode=mode,
+        value=recovered_ser.values[-1],
         number={
             "valueformat": ">,d",
             'font': {
@@ -218,7 +352,6 @@ def render_rus_cumulative_content():
             }
         },
         domain={'row': 0, 'column': 1},
-        # domain={'x': [0.4, 0.8], 'y': [0, 1]},
         title={
             'text': 'Recovered',
             'font': {
@@ -226,19 +359,11 @@ def render_rus_cumulative_content():
                 'color': 'green',
             }
         },
-        delta={
-            'reference': rus_recovered_cum.values[-2],
-            'relative': False,
-            'position': "bottom",
-            'valueformat': ">,d",
-            'increasing.color': 'green',
-            'increasing.symbol': '+'
-        }))
+        delta=delta_recovered))
 
     fig.add_trace(go.Indicator(
-        mode="number+delta",
-        align='center',
-        value=rus_deaths_cum.values[-1],
+        mode=mode,
+        value=deaths_ser.values[-1],
         number={
             "valueformat": ">,d",
             'font': {
@@ -247,7 +372,6 @@ def render_rus_cumulative_content():
             }
         },
         domain={'row': 0, 'column': 2},
-        # domain={'x': [0.8, 1], 'y': [0, 1]},
         title={
             'text': 'Deaths',
             'font': {
@@ -255,21 +379,26 @@ def render_rus_cumulative_content():
                 'color': 'red',
             }
         },
-        delta={
-            'reference': rus_deaths_cum.values[-2],
-            'relative': False,
-            'position': "bottom",
-            'valueformat': ">,d",
-            'increasing.color': 'red',
-            'increasing.symbol': '+',
-            # 'font.size': 48
-        }))
+        delta=delta_deaths))
 
     fig.update_layout(
         grid={'rows': 1, 'columns': 3},
         autosize=True,
         # width=500,
-        height=300
+        height=300,
+        # margin={'t': 100, 'b': 100, 'l': 0, 'r': 0}
+    )
+
+    return fig
+
+
+def render_rus_cumulative_content():
+    """
+        Render Russian cumulative stats
+    """
+
+    fig = get_key_metrics_fig(
+        rus_confirmed_cum, rus_recovered_cum, rus_deaths_cum, 'cumulative'
     )
 
     return html.Div(children=[
@@ -295,6 +424,13 @@ def render_rus_cumulative_content():
             title='Deaths',
             color='red'
         ),
+        generate_plot(
+            x=rus_active_cum.index,
+            y=rus_active_cum.values,
+            type='bar',
+            title='Active',
+            color='orange'
+        ),
     ])
 
 
@@ -303,76 +439,8 @@ def render_rus_new_content():
         Render Russian new stats
     """
 
-    fig = go.Figure()
-
-    fig.add_trace(go.Indicator(
-        mode="number",
-        align='center',
-        value=rus_new_cases.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'blue',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 0},
-        title={
-            'text': 'New Cases',
-            'font': {
-                'color': 'blue',
-                'size': 24,
-            }
-        },
-    ))
-
-    fig.add_trace(go.Indicator(
-        mode="number",
-        align='center',
-        value=rus_new_recovered.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'green',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 1},
-        title={
-            'text': 'New Recovered',
-            'font': {
-                'color': 'green',
-                'size': 24,
-            }
-        },
-    ))
-
-    fig.add_trace(go.Indicator(
-        mode="number",
-        align='center',
-        value=rus_new_deaths.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'red',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 2},
-        title={
-            'text': 'New Deaths',
-            'font': {
-                'color': 'red',
-                'size': 24,
-            }
-        },
-    ))
-
-    fig.update_layout(
-        grid={'rows': 1, 'columns': 3},
-        autosize=True,
-        # width=500,
-        height=250
+    fig = get_key_metrics_fig(
+        rus_new_cases, rus_new_recovered, rus_new_deaths, 'new'
     )
 
     return html.Div(children=[
@@ -398,6 +466,13 @@ def render_rus_new_content():
             title='New Deaths',
             color='red'
         ),
+        generate_plot(
+            x=rus_active_new.index,
+            y=rus_active_new.values,
+            type='bar',
+            title='New active',
+            color='orange',
+        ),
     ])
 
 
@@ -406,98 +481,8 @@ def render_global_cumulative_content():
         Render worldwide cumulative stats
     """
 
-    fig = go.Figure()
-
-    fig.add_trace(go.Indicator(
-        mode="number+delta",
-        align='center',
-        value=global_confirmed_cum.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'blue',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 0},
-        title={
-            'text': 'Confirmed',
-            'font': {
-                'color': 'blue',
-                'size': 24,
-            }
-        },
-        delta={
-            'reference': global_confirmed_cum.values[-2],
-            'relative': False,
-            'position': "bottom",
-            'valueformat': ">,d",
-            'increasing.color': 'blue',
-            'increasing.symbol': '+',
-        }))
-
-    fig.add_trace(go.Indicator(
-        mode="number+delta",
-        align='center',
-        value=global_recovered_cum.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'green',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 1},
-        title={
-            'text': 'Recovered',
-            'font': {
-                'color': 'green',
-                'size': 24,
-            }
-        },
-        delta={
-            'reference': global_recovered_cum.values[-2],
-            'relative': False,
-            'position': "bottom",
-            'valueformat': ">,d",
-            'increasing.color': 'green',
-            'increasing.symbol': '+'
-        }))
-
-    fig.add_trace(go.Indicator(
-        mode="number+delta",
-        align='center',
-        value=global_deaths_cum.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'red',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 2},
-        title={
-            'text': 'Deaths',
-            'font': {
-                'color': 'red',
-                'size': 24,
-            }
-        },
-        delta={
-            'reference': global_deaths_cum.values[-2],
-            'relative': False,
-            'position': "bottom",
-            'valueformat': ">,d",
-            'increasing.color': 'red',
-            'increasing.symbol': '+'
-        }))
-
-    fig.update_layout(
-        grid={'rows': 1, 'columns': 3},
-        autosize=True,
-        # width=500,
-        height=300
-    )
+    fig = get_key_metrics_fig(global_confirmed_cum, global_recovered_cum,
+                              global_deaths_cum, 'cumulative')
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
@@ -522,6 +507,16 @@ def render_global_cumulative_content():
             title='Deaths',
             color='red'
         ),
+        generate_plot(
+            x=global_active_cum.index,
+            y=global_active_cum.values,
+            type='bar',
+            title='Active',
+            color='orange'
+        ),
+        dcc.Graph(
+            figure=map_fig
+        )
     ])
 
 
@@ -530,77 +525,8 @@ def render_global_new_content():
         Render worldwide new cases stats
     """
 
-    fig = go.Figure()
-
-    fig.add_trace(go.Indicator(
-        mode="number",
-        align='center',
-        value=global_confirmed_new.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'blue',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 0},
-        title={
-            'text': 'New Cases',
-            'font': {
-                'color': 'blue',
-                'size': 24,
-            }
-        },
-    ))
-
-    fig.add_trace(go.Indicator(
-        mode="number",
-        align='center',
-        value=global_new_recovered.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'green',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 1},
-        title={
-            'text': 'New Recovered',
-            'font': {
-                'color': 'green',
-                'size': 24,
-            }
-        },
-    ))
-
-    fig.add_trace(go.Indicator(
-        mode="number",
-        align='center',
-        value=global_new_deaths.values[-1],
-        number={
-            "valueformat": ">,d",
-            'font': {
-                'color': 'red',
-                'size': 60,
-            }
-        },
-        domain={'row': 0, 'column': 2},
-        title={
-            'text': 'New Deaths',
-            'font': {
-                'color': 'red',
-                'size': 24,
-            }
-        },
-    ))
-
-    fig.update_layout(
-        grid={'rows': 1, 'columns': 3},
-        autosize=True,
-        # width=500,
-        height=250
-    )
+    fig = get_key_metrics_fig(global_confirmed_new, global_new_recovered,
+                              global_new_deaths, 'new')
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
@@ -624,6 +550,13 @@ def render_global_new_content():
             type='bar',
             title='New Deaths',
             color='red'
+        ),
+        generate_plot(
+            x=global_active_new.index,
+            y=global_active_new.values,
+            type='bar',
+            title='New active',
+            color='orange',
         ),
     ])
 
