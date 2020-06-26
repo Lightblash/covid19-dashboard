@@ -6,6 +6,7 @@ from dash.dependencies import Input, Output
 import pandas as pd
 import plotly.graph_objs as go
 import plotly.express as px
+import os
 
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -16,8 +17,10 @@ RECOVERED_CSV = 'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/maste
 
 DEATHS_CSV = 'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv'
 
+COUNTRIES_COORDINATES_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'country_centroids.csv')
 
-def get_metric_ser(metric_csv, metric_type, country=None):
+
+def get_processed_df(metric_csv):
     """
 
         Parameter
@@ -26,24 +29,84 @@ def get_metric_ser(metric_csv, metric_type, country=None):
         metrics_csv : str
             Full url path to target csv file
 
+
+        Return
+        ------
+
+        pandas.DataFrame
+            Return processed pandas DataFrame
+    """
+
+    source_df = pd.read_csv(metric_csv)
+    source_df.drop(columns=['Province/State'], inplace=True)
+    source_df.rename(columns={'Country/Region': 'country'}, inplace=True)
+    processed_df = source_df.drop(columns=['Lat', 'Long'])
+    source_df = source_df[['country', 'Lat', 'Long']].drop_duplicates('country')
+    processed_df = processed_df.melt(
+        id_vars='country',
+        var_name='date',
+        value_name='value'
+    )
+
+    centroid_df = pd.read_csv(
+        COUNTRIES_COORDINATES_CSV, usecols=['admin', 'Longitude', 'Latitude'])
+
+    centroid_df.columns = ['country', 'Longitude', 'Latitude']
+    processed_df['date'] = pd.to_datetime(processed_df['date'])
+    processed_df = processed_df.groupby(['country', 'date']).value.sum().reset_index()
+    processed_df['prev_value'] = processed_df.groupby('country').value.shift(1)
+    processed_df['new_cases'] = processed_df.value - processed_df.prev_value
+    processed_df.fillna(value={'new_cases': 0}, inplace=True)
+    processed_df.drop(columns=['prev_value'], inplace=True)
+
+    # join long and lat from centroid
+    processed_df = processed_df.merge(centroid_df, how='left', on='country')
+
+    # join long and lat for the
+    processed_df = processed_df.merge(
+        source_df,
+        how='left',
+        on='country'
+    )
+
+    processed_df['Lat'] = processed_df.apply(
+        lambda x: x['Latitude'] if pd.notna(x['Latitude']) else x['Lat'], axis=1)
+    processed_df['Long'] = processed_df.apply(
+        lambda x: x['Longitude'] if pd.notna(x['Longitude']) else x['Long'], axis=1)
+
+    processed_df.drop(columns=['Latitude', 'Longitude'], inplace=True)
+
+    return processed_df
+
+
+confirmed_df = get_processed_df(CONFIRMED_CSV)
+recovered_df = get_processed_df(RECOVERED_CSV)
+deaths_df = get_processed_df(DEATHS_CSV)
+
+
+def get_metric_ser(df, metric_type, country=None):
+    """
+        Return specific metric from provided dataframe. If country
+        is provided returns country specific stats.
+
+        Parameter
+        ---------
+
+        df : pandas.DataFrame
+            Processed DataFrame with function get_processed_df()
+
         metric_type : str
             One of ['cumulative', 'new']
 
         country : str
             If None global stats is provided
-    """
 
-    df = pd.read_csv(metric_csv)
-    df.drop(columns=['Province/State'], inplace=True)
-    df = df.melt(
-        id_vars=['Country/Region', 'Lat', 'Long'],
-        var_name='date',
-        value_name='value'
-    )
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.groupby(['Country/Region', 'date']).value.sum().reset_index()
-    df['prev_value'] = df.groupby('Country/Region').value.shift(1)
-    df['new_cases'] = df.value - df.prev_value
+        Return
+        ------
+
+        pandas.Series
+            Grouped by date cases
+    """
 
     if not country:
         if metric_type == 'cumulative':
@@ -52,28 +115,28 @@ def get_metric_ser(metric_csv, metric_type, country=None):
             return df.groupby('date').new_cases.sum()
     if country:
         if metric_type == 'cumulative':
-            return df[df['Country/Region'] == country].groupby('date').value.sum()
+            return df[df['country'] == country].groupby('date').value.sum()
         if metric_type == 'new':
-            return df[df['Country/Region'] == country].groupby('date').new_cases.sum()
+            return df[df['country'] == country].groupby('date').new_cases.sum()
 
 
 # confirmed
-global_confirmed_cum = get_metric_ser(CONFIRMED_CSV, 'cumulative')
-global_confirmed_new = get_metric_ser(CONFIRMED_CSV, 'new')
-rus_confirmed_cum = get_metric_ser(CONFIRMED_CSV, 'cumulative', 'Russia')
-rus_new_cases = get_metric_ser(CONFIRMED_CSV, 'new', 'Russia')
+global_confirmed_cum = get_metric_ser(confirmed_df, 'cumulative')
+global_confirmed_new = get_metric_ser(confirmed_df, 'new')
+rus_confirmed_cum = get_metric_ser(confirmed_df, 'cumulative', 'Russia')
+rus_new_cases = get_metric_ser(confirmed_df, 'new', 'Russia')
 
 # recovered
-global_recovered_cum = get_metric_ser(RECOVERED_CSV, 'cumulative')
-global_new_recovered = get_metric_ser(RECOVERED_CSV, 'new')
-rus_recovered_cum = get_metric_ser(RECOVERED_CSV, 'cumulative', 'Russia')
-rus_new_recovered = get_metric_ser(RECOVERED_CSV, 'new', 'Russia')
+global_recovered_cum = get_metric_ser(recovered_df, 'cumulative')
+global_new_recovered = get_metric_ser(recovered_df, 'new')
+rus_recovered_cum = get_metric_ser(recovered_df, 'cumulative', 'Russia')
+rus_new_recovered = get_metric_ser(recovered_df, 'new', 'Russia')
 
 # deaths
-global_deaths_cum = get_metric_ser(DEATHS_CSV, 'cumulative')
-global_new_deaths = get_metric_ser(DEATHS_CSV, 'new')
-rus_deaths_cum = get_metric_ser(DEATHS_CSV, 'cumulative', 'Russia')
-rus_new_deaths = get_metric_ser(DEATHS_CSV, 'new', 'Russia')
+global_deaths_cum = get_metric_ser(deaths_df, 'cumulative')
+global_new_deaths = get_metric_ser(deaths_df, 'new')
+rus_deaths_cum = get_metric_ser(deaths_df, 'cumulative', 'Russia')
+rus_new_deaths = get_metric_ser(deaths_df, 'new', 'Russia')
 
 # active
 global_active_cum = global_confirmed_cum - global_recovered_cum
@@ -93,10 +156,11 @@ colors = {
 
 def serve_layout():
     """
-
+        Define overall layout of the dashboard
     """
     return html.Div(
         [
+            # title of the dashboard
             html.H1('COVID-19 Dashboard'),
             # section with buttons
             html.Div(
@@ -149,7 +213,6 @@ def generate_plot(x, y, type, title, color):
         Generate dash core components graph object
     """
     return dcc.Graph(
-        # id='articles_id',
         figure={
             'data': [
                 {
@@ -173,6 +236,7 @@ def generate_plot(x, y, type, title, color):
                     }
                 },
                 'xaxis': {
+                    # initial date range of xaxis
                     'range': ['2020-03-01', (x.max() + pd.DateOffset(days=1)).strftime('%Y-%m-%d')]
                 },
                 # 'autosize': False,
@@ -183,63 +247,46 @@ def generate_plot(x, y, type, title, color):
     )
 
 
-def get_processed_df(metric_csv):
+def render_map_chart(confirmed_df):
     """
-
-        Parameter
-        ---------
-
-        metrics_csv : str
-            Full url path to target csv file
+        Return map figure object
     """
-
-    df = pd.read_csv(metric_csv)
-    df.drop(columns=['Province/State'], inplace=True)
-    df = df.melt(
-        id_vars=['Country/Region', 'Lat', 'Long'],
-        var_name='date',
-        value_name='value'
-    )
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.groupby(['Country/Region', 'date', 'Lat', 'Long']).value.sum().reset_index()
-    df['prev_value'] = df.groupby('Country/Region').value.shift(1)
-    df['new_cases'] = df.value - df.prev_value
-    df.drop(columns=['prev_value'], inplace=True)
-
-    return df
-
-
-def render_map_chart():
-    """
-
-    """
-
-    confirmed_df = get_processed_df(CONFIRMED_CSV)
 
     confirmed_df['date'] = confirmed_df.date.astype(str)
 
-    norm = confirmed_df.groupby('date').value.max().reset_index()
+    confirmed_df['Norm'] = (confirmed_df.value ** 0.5 / confirmed_df.value.max() ** 0.5) * 50
 
-    confirmed_df = confirmed_df.merge(norm, on='date', how='left')
+    confirmed_df.rename(columns={'value': 'Confirmed Cases'}, inplace=True)
 
-    confirmed_df['Norm'] = confirmed_df.value_x / confirmed_df.value_y
-
-    confirmed_df['Norm'].fillna(0, inplace=True)
     # call scatter_mapbox function from px. Note the attributes especially
-    # normalisation of data and maximum maker size. The animation is done on Dates.
+    # normalisation of data and maximum marker size. The animation is done on Dates.
     fig_map = px.scatter_mapbox(
-        confirmed_df, lat="Lat", lon="Long", color='value_x',
-        size=confirmed_df['Norm'].round(3) ** 0.5 * 50,
-        color_continuous_scale="thermal", size_max=50, animation_frame='date',
-        center=dict({'lat': 32, 'lon': 4}), zoom=1, hover_data=['Country/Region']
+        confirmed_df,
+        lat="Lat",
+        lon="Long",
+        color='Confirmed Cases',
+        size='Norm',
+        color_continuous_scale="Portland",
+        size_max=50,
+        animation_frame='date',
+        center=dict({'lat': 32, 'lon': 4}),
+        zoom=1,
+        hover_data={
+            'Norm': False,
+            'country': True,
+            'Confirmed Cases': ':,',
+            'Lat': False,
+            'Long': False
+        },
+        # hover_name='Confirmed Cases'
+        # title='Spread of the COVID-19 around the world. Confirmed cases'
     )
-    # here on wards various layouts have been called in to bring it in the present shape
+    # adjust layout
     fig_map.update_layout(
-
         mapbox_style="carto-positron",
         width=1250,
         height=630,
-        margin={"r": 0, "t": 0, "l": 10, "b": 0}
+        margin={"r": 0, "t": 0, "l": 50, "b": 0}
     )
     # update frame speed
     fig_map.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 200
@@ -247,17 +294,18 @@ def render_map_chart():
     fig_map.layout.sliders[0].currentvalue.xanchor = "left"
     fig_map.layout.sliders[0].currentvalue.offset = -100
     fig_map.layout.sliders[0].currentvalue.prefix = ""
-    fig_map.layout.sliders[0].len = .9
     fig_map.layout.sliders[0].currentvalue.font.color = "indianred"
     fig_map.layout.sliders[0].currentvalue.font.size = 20
+    # fig_map.layout.sliders[0].len = 1
     fig_map.layout.sliders[0].y = 1.1
-    fig_map.layout.sliders[0].x = 0.15
+    fig_map.layout.sliders[0].x = 0.1
     fig_map.layout.updatemenus[0].y = 1.27
+    fig_map.layout.updatemenus[0].x = 0.08
 
     return fig_map
 
 
-map_fig = render_map_chart()
+map_fig = render_map_chart(confirmed_df)
 
 
 def get_key_metrics_fig(confirmed_ser, recovered_ser, deaths_ser, metric_type):
@@ -513,6 +561,16 @@ def render_global_cumulative_content():
             type='bar',
             title='Active',
             color='orange'
+        ),
+        html.Div(
+            'Spread of the COVID-19 around the world. Confirmed cases',
+            style={
+                # 'color': 'blue',
+                'fontSize': 24,
+                'marginBottom': 0,
+                'paddingBottom': 0,
+                'textAlign': 'center'
+            }
         ),
         dcc.Graph(
             figure=map_fig
