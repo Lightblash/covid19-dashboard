@@ -1,1 +1,1 @@
-web: gunicorn covid19_dashboard:server
+web: gunicorn covid19_dashboard:server --preload
