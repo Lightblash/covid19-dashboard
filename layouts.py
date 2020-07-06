@@ -1,15 +1,10 @@
-# -*- coding: utf-8 -*-
-import dash
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Input, Output
-import pandas as pd
+
 import plotly.graph_objs as go
 import plotly.express as px
 import os
-
-
-external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+import pandas as pd
 
 CONFIRMED_CSV = 'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv'
 
@@ -79,11 +74,6 @@ def get_processed_df(metric_csv):
     return processed_df
 
 
-confirmed_df = get_processed_df(CONFIRMED_CSV)
-recovered_df = get_processed_df(RECOVERED_CSV)
-deaths_df = get_processed_df(DEATHS_CSV)
-
-
 def get_metric_ser(df, metric_type, country=None):
     """
         Return specific metric from provided dataframe. If country
@@ -120,94 +110,6 @@ def get_metric_ser(df, metric_type, country=None):
             return df[df['country'] == country].groupby('date').new_cases.sum()
 
 
-# confirmed
-global_confirmed_cum = get_metric_ser(confirmed_df, 'cumulative')
-global_confirmed_new = get_metric_ser(confirmed_df, 'new')
-rus_confirmed_cum = get_metric_ser(confirmed_df, 'cumulative', 'Russia')
-rus_new_cases = get_metric_ser(confirmed_df, 'new', 'Russia')
-
-# recovered
-global_recovered_cum = get_metric_ser(recovered_df, 'cumulative')
-global_new_recovered = get_metric_ser(recovered_df, 'new')
-rus_recovered_cum = get_metric_ser(recovered_df, 'cumulative', 'Russia')
-rus_new_recovered = get_metric_ser(recovered_df, 'new', 'Russia')
-
-# deaths
-global_deaths_cum = get_metric_ser(deaths_df, 'cumulative')
-global_new_deaths = get_metric_ser(deaths_df, 'new')
-rus_deaths_cum = get_metric_ser(deaths_df, 'cumulative', 'Russia')
-rus_new_deaths = get_metric_ser(deaths_df, 'new', 'Russia')
-
-# active
-global_active_cum = global_confirmed_cum - global_recovered_cum
-global_active_new = global_confirmed_new - global_new_recovered
-rus_active_cum = rus_confirmed_cum - rus_recovered_cum
-rus_active_new = rus_new_cases - rus_new_recovered
-
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-
-server = app.server
-
-colors = {
-    'background': '#FFFFFF',
-    'text': '#8C9D95'
-}
-
-
-def serve_layout():
-    """
-        Define overall layout of the dashboard
-    """
-    return html.Div(
-        [
-            # title of the dashboard
-            html.H1('COVID-19 Dashboard'),
-            # section with buttons
-            html.Div(
-                [
-                    html.Button(
-                        'Cumulative', id='cum_button', n_clicks_timestamp=1,
-                        className='btn active',
-                        style={'backgroundColor': '#e7e7e7', 'color': 'black'}
-                    ),
-                    html.Button(
-                        'New Cases', id='new_cases_button', n_clicks_timestamp=0,
-                        className='btn',
-                        style={'backgroundColor': '#e7e7e7', 'color': 'black'}
-                    )
-                ],
-                style={'textAlign': 'center'}
-            ),
-            html.Div(
-                id='button-clicked',
-                style={'textAlign': 'center', 'marginBottom': 10}
-            ),
-            # section with tabs
-            dcc.Tabs(id="tabs", value='rus_tab', children=[
-                dcc.Tab(label='Russia', value='rus_tab'),
-                dcc.Tab(label='World', value='global_tab'),
-            ]),
-            html.Div(id='tabs-content'),
-        ]
-    )
-
-
-# determine which button is pressed
-@app.callback(
-    [Output('cum_button', 'style'),
-     Output('new_cases_button', 'style')],
-    [Input('cum_button', 'n_clicks_timestamp'),
-     Input('new_cases_button', 'n_clicks_timestamp')]
-)
-def set_active_button_color(btn1, btn2):
-    active = {'backgroundColor': '#008CBA', 'color': 'white'}
-    passive = {'backgroundColor': '#e7e7e7', 'color': 'black'}
-    if int(btn1) > int(btn2):
-        return (active, passive)
-    else:
-        return (passive, active)
-
-
 def generate_plot(x, y, type, title, color):
     """
         Generate dash core components graph object
@@ -224,8 +126,8 @@ def generate_plot(x, y, type, title, color):
                 }
             ],
             'layout': {
-                'plot_bgcolor': colors['background'],
-                'paper_bgcolor': colors['background'],
+                'plot_bgcolor': '#FFFFFF',
+                'paper_bgcolor': '#FFFFFF',
                 'font': {'color': color},
                 'color': color,
                 'title': {
@@ -245,67 +147,6 @@ def generate_plot(x, y, type, title, color):
             }
         }
     )
-
-
-def render_map_chart(confirmed_df):
-    """
-        Return map figure object
-    """
-
-    confirmed_df['date'] = confirmed_df.date.astype(str)
-
-    confirmed_df['Norm'] = (confirmed_df.value ** 0.5 / confirmed_df.value.max() ** 0.5) * 50
-
-    confirmed_df.rename(columns={'value': 'Confirmed Cases'}, inplace=True)
-
-    # call scatter_mapbox function from px. Note the attributes especially
-    # normalisation of data and maximum marker size. The animation is done on Dates.
-    fig_map = px.scatter_mapbox(
-        confirmed_df,
-        lat="Lat",
-        lon="Long",
-        color='Confirmed Cases',
-        size='Norm',
-        color_continuous_scale="Portland",
-        size_max=50,
-        animation_frame='date',
-        center=dict({'lat': 32, 'lon': 4}),
-        zoom=1,
-        hover_data={
-            'Norm': False,
-            'country': True,
-            'Confirmed Cases': ':,',
-            'Lat': False,
-            'Long': False
-        },
-        # hover_name='Confirmed Cases'
-        # title='Spread of the COVID-19 around the world. Confirmed cases'
-    )
-    # adjust layout
-    fig_map.update_layout(
-        mapbox_style="carto-positron",
-        width=1250,
-        height=630,
-        margin={"r": 0, "t": 0, "l": 50, "b": 0}
-    )
-    # update frame speed
-    fig_map.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 200
-    # update different layouts
-    fig_map.layout.sliders[0].currentvalue.xanchor = "left"
-    fig_map.layout.sliders[0].currentvalue.offset = -100
-    fig_map.layout.sliders[0].currentvalue.prefix = ""
-    fig_map.layout.sliders[0].currentvalue.font.color = "indianred"
-    fig_map.layout.sliders[0].currentvalue.font.size = 20
-    # fig_map.layout.sliders[0].len = 1
-    fig_map.layout.sliders[0].y = 1.1
-    fig_map.layout.sliders[0].x = 0.1
-    fig_map.layout.updatemenus[0].y = 1.27
-    fig_map.layout.updatemenus[0].x = 0.08
-
-    return fig_map
-
-
-map_fig = render_map_chart(confirmed_df)
 
 
 def get_key_metrics_fig(confirmed_ser, recovered_ser, deaths_ser, metric_type):
@@ -440,41 +281,110 @@ def get_key_metrics_fig(confirmed_ser, recovered_ser, deaths_ser, metric_type):
     return fig
 
 
-def render_rus_cumulative_content():
+def render_map_chart(confirmed_df):
+    """
+        Return map figure object
+    """
+
+    confirmed_df['Norm'] = (confirmed_df.value ** 0.5 / confirmed_df.value.max() ** 0.5) * 50
+
+    confirmed_df.rename(columns={'value': 'Confirmed Cases'}, inplace=True)
+
+    confirmed_df = confirmed_df.groupby([
+        pd.Grouper(key='date', freq='2D'),
+        'country',
+        'Lat',
+        'Long'
+    ])['Confirmed Cases', 'Norm'].max().reset_index()
+
+    confirmed_df['date'] = confirmed_df.date.astype(str)
+
+    # call scatter_mapbox function from px. Note the attributes especially
+    # normalisation of data and maximum marker size. The animation is done on Dates.
+    fig_map = px.scatter_mapbox(
+        confirmed_df,
+        lat="Lat",
+        lon="Long",
+        color='Confirmed Cases',
+        size='Norm',
+        color_continuous_scale="Portland",
+        size_max=50,
+        animation_frame='date',
+        center=dict({'lat': 32, 'lon': 4}),
+        zoom=1,
+        hover_data={
+            'Norm': False,
+            'country': True,
+            'Confirmed Cases': ':,',
+            'Lat': False,
+            'Long': False,
+        }
+        # hover_name='Confirmed Cases'
+        # title='Spread of the COVID-19 around the world. Confirmed cases'
+    )
+    # adjust layout
+    fig_map.update_layout(
+        mapbox_style="carto-positron",
+        width=1250,
+        height=630,
+        margin={"r": 0, "t": 0, "l": 50, "b": 0}
+    )
+    # update frame speed
+    fig_map.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 225
+    # update different layouts
+    fig_map.layout.sliders[0].currentvalue.xanchor = "left"
+    fig_map.layout.sliders[0].currentvalue.offset = -100
+    fig_map.layout.sliders[0].currentvalue.prefix = ""
+    fig_map.layout.sliders[0].currentvalue.font.color = "indianred"
+    fig_map.layout.sliders[0].currentvalue.font.size = 20
+    # fig_map.layout.sliders[0].len = 1
+    fig_map.layout.sliders[0].y = 1.1
+    fig_map.layout.sliders[0].x = 0.1
+    fig_map.layout.updatemenus[0].y = 1.27
+    fig_map.layout.updatemenus[0].x = 0.08
+
+    return fig_map
+
+
+def render_rus_cumulative_content(rus_confirmed_cum_ser, rus_recovered_cum_ser,
+                                  rus_deaths_cum_ser):
     """
         Render Russian cumulative stats
     """
 
     fig = get_key_metrics_fig(
-        rus_confirmed_cum, rus_recovered_cum, rus_deaths_cum, 'cumulative'
+        rus_confirmed_cum_ser, rus_recovered_cum_ser,
+        rus_deaths_cum_ser, 'cumulative'
     )
+
+    rus_active_cum_ser = rus_confirmed_cum_ser - rus_recovered_cum_ser
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
         generate_plot(
-            x=rus_confirmed_cum.index,
-            y=rus_confirmed_cum.values,
+            x=rus_confirmed_cum_ser.index,
+            y=rus_confirmed_cum_ser.values,
             type='bar',
             title='Confirmed Cases',
             color='blue'
         ),
         generate_plot(
-            x=rus_recovered_cum.index,
-            y=rus_recovered_cum.values,
+            x=rus_recovered_cum_ser.index,
+            y=rus_recovered_cum_ser.values,
             type='bar',
             title='Recovered',
             color='green'
         ),
         generate_plot(
-            x=rus_deaths_cum.index,
-            y=rus_deaths_cum.values,
+            x=rus_deaths_cum_ser.index,
+            y=rus_deaths_cum_ser.values,
             type='bar',
             title='Deaths',
             color='red'
         ),
         generate_plot(
-            x=rus_active_cum.index,
-            y=rus_active_cum.values,
+            x=rus_active_cum_ser.index,
+            y=rus_active_cum_ser.values,
             type='bar',
             title='Active',
             color='orange'
@@ -482,41 +392,44 @@ def render_rus_cumulative_content():
     ])
 
 
-def render_rus_new_content():
+def render_rus_new_content(rus_new_cases_ser, rus_new_recovered_ser,
+                           rus_new_deaths_ser):
     """
         Render Russian new stats
     """
 
     fig = get_key_metrics_fig(
-        rus_new_cases, rus_new_recovered, rus_new_deaths, 'new'
+        rus_new_cases_ser, rus_new_recovered_ser, rus_new_deaths_ser, 'new'
     )
+
+    rus_active_new_ser = rus_new_cases_ser - rus_new_recovered_ser
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
         generate_plot(
-            x=rus_new_cases.index,
-            y=rus_new_cases.values,
+            x=rus_new_cases_ser.index,
+            y=rus_new_cases_ser.values,
             type='bar',
             title='New Cases',
             color='blue'
         ),
         generate_plot(
-            x=rus_new_recovered.index,
-            y=rus_new_recovered.values,
+            x=rus_new_recovered_ser.index,
+            y=rus_new_recovered_ser.values,
             type='bar',
             title='New Recovered',
             color='green'
         ),
         generate_plot(
-            x=rus_new_deaths.index,
-            y=rus_new_deaths.values,
+            x=rus_new_deaths_ser.index,
+            y=rus_new_deaths_ser.values,
             type='bar',
             title='New Deaths',
             color='red'
         ),
         generate_plot(
-            x=rus_active_new.index,
-            y=rus_active_new.values,
+            x=rus_active_new_ser.index,
+            y=rus_active_new_ser.values,
             type='bar',
             title='New active',
             color='orange',
@@ -524,40 +437,45 @@ def render_rus_new_content():
     ])
 
 
-def render_global_cumulative_content():
+def render_global_cumulative_content(
+    global_confirmed_cum_ser, global_recovered_cum_ser,
+    global_deaths_cum_ser, map_fig
+):
     """
         Render worldwide cumulative stats
     """
 
-    fig = get_key_metrics_fig(global_confirmed_cum, global_recovered_cum,
-                              global_deaths_cum, 'cumulative')
+    fig = get_key_metrics_fig(global_confirmed_cum_ser, global_recovered_cum_ser,
+                              global_deaths_cum_ser, 'cumulative')
+
+    global_active_cum_ser = global_confirmed_cum_ser - global_recovered_cum_ser
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
         generate_plot(
-            x=global_confirmed_cum.index,
-            y=global_confirmed_cum.values,
+            x=global_confirmed_cum_ser.index,
+            y=global_confirmed_cum_ser.values,
             type='bar',
             title='Confirmed Cases',
             color='blue'
         ),
         generate_plot(
-            x=global_recovered_cum.index,
-            y=global_recovered_cum.values,
+            x=global_recovered_cum_ser.index,
+            y=global_recovered_cum_ser.values,
             type='bar',
             title='Recovered',
             color='green'
         ),
         generate_plot(
-            x=global_deaths_cum.index,
-            y=global_deaths_cum.values,
+            x=global_deaths_cum_ser.index,
+            y=global_deaths_cum_ser.values,
             type='bar',
             title='Deaths',
             color='red'
         ),
         generate_plot(
-            x=global_active_cum.index,
-            y=global_active_cum.values,
+            x=global_active_cum_ser.index,
+            y=global_active_cum_ser.values,
             type='bar',
             title='Active',
             color='orange'
@@ -578,40 +496,44 @@ def render_global_cumulative_content():
     ])
 
 
-def render_global_new_content():
+def render_global_new_content(
+    global_confirmed_new_ser, global_new_recovered_ser, global_new_deaths_ser
+):
     """
         Render worldwide new cases stats
     """
 
-    fig = get_key_metrics_fig(global_confirmed_new, global_new_recovered,
-                              global_new_deaths, 'new')
+    fig = get_key_metrics_fig(global_confirmed_new_ser, global_new_recovered_ser,
+                              global_new_deaths_ser, 'new')
+
+    global_active_new_ser = global_confirmed_new_ser - global_new_recovered_ser
 
     return html.Div(children=[
         dcc.Graph(figure=fig),
         generate_plot(
-            x=global_confirmed_new.index,
-            y=global_confirmed_new.values,
+            x=global_confirmed_new_ser.index,
+            y=global_confirmed_new_ser.values,
             type='bar',
             title='New Cases',
             color='blue'
         ),
         generate_plot(
-            x=global_new_recovered.index,
-            y=global_new_recovered.values,
+            x=global_new_recovered_ser.index,
+            y=global_new_recovered_ser.values,
             type='bar',
             title='New Recovered',
             color='green'
         ),
         generate_plot(
-            x=global_new_deaths.index,
-            y=global_new_deaths.values,
+            x=global_new_deaths_ser.index,
+            y=global_new_deaths_ser.values,
             type='bar',
             title='New Deaths',
             color='red'
         ),
         generate_plot(
-            x=global_active_new.index,
-            y=global_active_new.values,
+            x=global_active_new_ser.index,
+            y=global_active_new_ser.values,
             type='bar',
             title='New active',
             color='orange',
@@ -619,31 +541,39 @@ def render_global_new_content():
     ])
 
 
-app.layout = serve_layout
+confirmed_df = get_processed_df(CONFIRMED_CSV)
+recovered_df = get_processed_df(RECOVERED_CSV)
+deaths_df = get_processed_df(DEATHS_CSV)
 
+# confirmed
+global_confirmed_cum = get_metric_ser(confirmed_df, 'cumulative')
+global_confirmed_new = get_metric_ser(confirmed_df, 'new')
+rus_confirmed_cum = get_metric_ser(confirmed_df, 'cumulative', 'Russia')
+rus_new_cases = get_metric_ser(confirmed_df, 'new', 'Russia')
 
-@app.callback(
-    Output('tabs-content', 'children'),
-    [
-        Input('tabs', 'value'),
-        Input('cum_button', 'n_clicks_timestamp'),
-        Input('new_cases_button', 'n_clicks_timestamp')
-    ]
+# recovered
+global_recovered_cum = get_metric_ser(recovered_df, 'cumulative')
+global_new_recovered = get_metric_ser(recovered_df, 'new')
+rus_recovered_cum = get_metric_ser(recovered_df, 'cumulative', 'Russia')
+rus_new_recovered = get_metric_ser(recovered_df, 'new', 'Russia')
+
+# deaths
+global_deaths_cum = get_metric_ser(deaths_df, 'cumulative')
+global_new_deaths = get_metric_ser(deaths_df, 'new')
+rus_deaths_cum = get_metric_ser(deaths_df, 'cumulative', 'Russia')
+rus_new_deaths = get_metric_ser(deaths_df, 'new', 'Russia')
+
+map_fig = render_map_chart(confirmed_df)
+
+global_cum_layout = render_global_cumulative_content(
+    global_confirmed_cum, global_recovered_cum, global_deaths_cum, map_fig
 )
-def render_content(tab, btn1, btn2):
-    # Russia tab cumulative stats
-    if tab == 'rus_tab' and (int(btn1) > int(btn2)):
-        return render_rus_cumulative_content()
-    # Russia tab new cases stats
-    elif tab == 'rus_tab' and (int(btn1) < int(btn2)):
-        return render_rus_new_content()
-    # world tab cumulative stats
-    elif tab == 'global_tab' and (int(btn1) > int(btn2)):
-        return render_global_cumulative_content()
-    # world tab new cases stats
-    elif tab == 'global_tab' and (int(btn1) < int(btn2)):
-        return render_global_new_content()
-
-
-if __name__ == '__main__':
-    app.run_server(debug=True)
+global_new_layout = render_global_new_content(
+    global_confirmed_new, global_new_recovered, global_new_deaths
+)
+rus_cum_layout = render_rus_cumulative_content(
+    rus_confirmed_cum, rus_recovered_cum, rus_deaths_cum
+)
+rus_new_layout = render_rus_new_content(
+    rus_new_cases, rus_new_recovered, rus_new_deaths
+)
