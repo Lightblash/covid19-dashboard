@@ -110,25 +110,51 @@ def get_metric_ser(df, metric_type, country=None):
             return df[df['country'] == country].groupby('date').new_cases.sum()
 
 
-def generate_plot(x, y, type, title, color):
+def generate_plot(x, y, type, title, color,
+                  mean_legend=False, mean_y=None, xaxis_start_date='2020-03-01'):
     """
         Generate dash core components graph object
     """
+
+    if mean_legend:
+        data = [
+            {
+                'x': x,
+                'y': y,
+                'type': type,
+                'name': title,
+                'marker': {'color': color},
+            },
+            {
+                'x': x,
+                'y': mean_y,
+                'type': 'line',
+                'marker': {'color': 'orange'},
+                'name': 'Avg value for the last 7 days',
+            }
+        ]
+    else:
+        data = [
+            {
+                'x': x,
+                'y': y,
+                'type': type,
+                'name': title,
+                'marker': {'color': color},
+            }
+        ]
     return dcc.Graph(
         figure={
-            'data': [
-                {
-                    'x': x,
-                    'y': y,
-                    'type': type,
-                    'name': title,
-                    'marker': {'color': color},
-                }
-            ],
+            'data': data,
             'layout': {
                 'plot_bgcolor': '#FFFFFF',
                 'paper_bgcolor': '#FFFFFF',
                 'font': {'color': color},
+                'legend': {
+                    'orientation': 'h',
+                    'x': 0.5,
+                    'xanchor': 'center',
+                },
                 'color': color,
                 'title': {
                     'text': title,
@@ -139,7 +165,7 @@ def generate_plot(x, y, type, title, color):
                 },
                 'xaxis': {
                     # initial date range of xaxis
-                    'range': ['2020-03-01', (x.max() + pd.DateOffset(days=1)).strftime('%Y-%m-%d')]
+                    'range': [xaxis_start_date, (x.max() + pd.DateOffset(days=1)).strftime('%Y-%m-%d')]
                 },
                 # 'autosize': False,
                 # 'width': 600,
@@ -295,7 +321,7 @@ def render_map_chart(confirmed_df):
         'country',
         'Lat',
         'Long'
-    ])['Confirmed Cases', 'Norm'].max().reset_index()
+    ])[['Confirmed Cases', 'Norm']].max().reset_index()
 
     confirmed_df['date'] = confirmed_df.date.astype(str)
 
@@ -359,6 +385,8 @@ def render_rus_cumulative_content(rus_confirmed_cum_ser, rus_recovered_cum_ser,
 
     rus_active_cum_ser = rus_confirmed_cum_ser - rus_recovered_cum_ser
 
+    rus_cfr = rus_deaths_cum_ser / (rus_deaths_cum_ser + rus_recovered_cum_ser)
+
     return html.Div(children=[
         dcc.Graph(figure=fig),
         generate_plot(
@@ -376,19 +404,58 @@ def render_rus_cumulative_content(rus_confirmed_cum_ser, rus_recovered_cum_ser,
             color='green'
         ),
         generate_plot(
-            x=rus_deaths_cum_ser.index,
-            y=rus_deaths_cum_ser.values,
-            type='bar',
-            title='Deaths',
-            color='red'
-        ),
-        generate_plot(
             x=rus_active_cum_ser.index,
             y=rus_active_cum_ser.values,
             type='bar',
             title='Active',
             color='orange'
         ),
+        generate_plot(
+            x=rus_deaths_cum_ser.index,
+            y=rus_deaths_cum_ser.values,
+            type='bar',
+            title='Deaths',
+            color='red'
+        ),
+        dcc.Graph(figure={
+            'data': [
+                {
+                    'x': rus_cfr.index,
+                    'y': rus_cfr.values,
+                    'type': 'line',
+                    'name': 'Case Fatality Rate',
+                    'marker': {'color': 'purple'},
+                }
+            ],
+            'layout': {
+                'plot_bgcolor': '#FFFFFF',
+                'paper_bgcolor': '#FFFFFF',
+                'font': {'color': 'purple'},
+                'legend': {
+                    'orientation': 'h',
+                    'x': 0.5,
+                    'xanchor': 'center',
+                },
+                'color': 'purple',
+                'title': {
+                    'text': 'Case Fatality Rate',
+                    'font': {
+                        'color': 'purple',
+                        'size': 24,
+                    }
+                },
+                'xaxis': {
+                    # initial date range of xaxis
+                    'range': ['2020-04-01', (rus_cfr.index.max() + pd.DateOffset(days=1)).strftime('%Y-%m-%d')]
+                },
+                'yaxis': {
+                    'tickformat': ',.1%',
+                },
+                # 'autosize': False,
+                # 'width': 600,
+                # 'height': 500,
+            }
+        }),
     ])
 
 
@@ -411,7 +478,9 @@ def render_rus_new_content(rus_new_cases_ser, rus_new_recovered_ser,
             y=rus_new_cases_ser.values,
             type='bar',
             title='New Cases',
-            color='blue'
+            color='blue',
+            mean_legend=True,
+            mean_y=rus_new_cases_ser.rolling(window=7).mean().round().values
         ),
         generate_plot(
             x=rus_new_recovered_ser.index,
@@ -421,18 +490,20 @@ def render_rus_new_content(rus_new_cases_ser, rus_new_recovered_ser,
             color='green'
         ),
         generate_plot(
-            x=rus_new_deaths_ser.index,
-            y=rus_new_deaths_ser.values,
-            type='bar',
-            title='New Deaths',
-            color='red'
-        ),
-        generate_plot(
             x=rus_active_new_ser.index,
             y=rus_active_new_ser.values,
             type='bar',
             title='New active',
             color='orange',
+        ),
+        generate_plot(
+            x=rus_new_deaths_ser.index,
+            y=rus_new_deaths_ser.values,
+            type='bar',
+            title='New Deaths',
+            color='red',
+            mean_legend=True,
+            mean_y=rus_new_deaths_ser.rolling(window=7).mean().round().values
         ),
     ])
 
@@ -450,6 +521,8 @@ def render_global_cumulative_content(
 
     global_active_cum_ser = global_confirmed_cum_ser - global_recovered_cum_ser
 
+    global_cfr = global_deaths_cum_ser / (global_deaths_cum_ser + global_recovered_cum_ser)
+
     return html.Div(children=[
         dcc.Graph(figure=fig),
         generate_plot(
@@ -458,27 +531,6 @@ def render_global_cumulative_content(
             type='bar',
             title='Confirmed Cases',
             color='blue'
-        ),
-        generate_plot(
-            x=global_recovered_cum_ser.index,
-            y=global_recovered_cum_ser.values,
-            type='bar',
-            title='Recovered',
-            color='green'
-        ),
-        generate_plot(
-            x=global_deaths_cum_ser.index,
-            y=global_deaths_cum_ser.values,
-            type='bar',
-            title='Deaths',
-            color='red'
-        ),
-        generate_plot(
-            x=global_active_cum_ser.index,
-            y=global_active_cum_ser.values,
-            type='bar',
-            title='Active',
-            color='orange'
         ),
         html.Div(
             'Spread of the COVID-19 around the world. Confirmed cases',
@@ -492,7 +544,67 @@ def render_global_cumulative_content(
         ),
         dcc.Graph(
             figure=map_fig
-        )
+        ),
+        generate_plot(
+            x=global_recovered_cum_ser.index,
+            y=global_recovered_cum_ser.values,
+            type='bar',
+            title='Recovered',
+            color='green'
+        ),
+        generate_plot(
+            x=global_active_cum_ser.index,
+            y=global_active_cum_ser.values,
+            type='bar',
+            title='Active',
+            color='orange'
+        ),
+        generate_plot(
+            x=global_deaths_cum_ser.index,
+            y=global_deaths_cum_ser.values,
+            type='bar',
+            title='Deaths',
+            color='red'
+        ),
+        dcc.Graph(figure={
+            'data': [
+                {
+                    'x': global_cfr.index,
+                    'y': global_cfr.values,
+                    'type': 'line',
+                    'name': 'Case Fatality Rate',
+                    'marker': {'color': 'purple'},
+                }
+            ],
+            'layout': {
+                'plot_bgcolor': '#FFFFFF',
+                'paper_bgcolor': '#FFFFFF',
+                'font': {'color': 'purple'},
+                'legend': {
+                    'orientation': 'h',
+                    'x': 0.5,
+                    'xanchor': 'center',
+                },
+                'color': 'purple',
+                'title': {
+                    'text': 'Case Fatality Rate',
+                    'font': {
+                        'color': 'purple',
+                        'size': 24,
+                    }
+                },
+                'xaxis': {
+                    # initial date range of xaxis
+                    'range': ['2020-02-01', (global_cfr.index.max() + pd.DateOffset(days=1)).strftime('%Y-%m-%d')]
+                },
+                'yaxis': {
+                    'tickformat': ',.1%',
+                },
+                # 'autosize': False,
+                # 'width': 600,
+                # 'height': 500,
+            }
+        }),
     ])
 
 
@@ -515,7 +627,9 @@ def render_global_new_content(
             y=global_confirmed_new_ser.values,
             type='bar',
             title='New Cases',
-            color='blue'
+            color='blue',
+            mean_legend=True,
+            mean_y=global_confirmed_new_ser.rolling(window=7).mean().round().values
         ),
         generate_plot(
             x=global_new_recovered_ser.index,
@@ -525,18 +639,20 @@ def render_global_new_content(
             color='green'
         ),
         generate_plot(
-            x=global_new_deaths_ser.index,
-            y=global_new_deaths_ser.values,
-            type='bar',
-            title='New Deaths',
-            color='red'
-        ),
-        generate_plot(
             x=global_active_new_ser.index,
             y=global_active_new_ser.values,
             type='bar',
             title='New active',
             color='orange',
+        ),
+        generate_plot(
+            x=global_new_deaths_ser.index,
+            y=global_new_deaths_ser.values,
+            type='bar',
+            title='New Deaths',
+            color='red',
+            mean_legend=True,
+            mean_y=global_new_deaths_ser.rolling(window=7).mean().round().values
         ),
     ])
 
