@@ -8,9 +8,9 @@ Simple dashboard with COVID-19 global and separate Russian Federation statistics
 
 ### Docker
 
-    docker run -d -p 8050:8050 lightblash/covid19_dash:v0.1
+    docker run -d -p 8050:8050 lightblash/covid19_dash:latest
 
-and visit <http://127.0.0.1:8050/> in your web browser. You should see the app.
+and visit <http://localhost:8050/> in your web browser. You should see the app.
 
 ### Clone
 
@@ -34,9 +34,9 @@ Install all dependencies into your current environment running the following com
 
 Run the app from the root directory of the repo with
 
-    python covid19_dashboard.py
+    python index.py
 
-and visit <http://127.0.0.1:8050/> in your web browser. You should see the app.
+and visit <http://localhost:8050/> in your web browser. You should see the app.
 
 ## License
 
